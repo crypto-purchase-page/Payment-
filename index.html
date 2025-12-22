@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Secure Checkout</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        /* --- CSS VARIABLES & RESET --- */
+        :root {
+            --bg-body: #010409;
+            --bg-card: #0d1117;
+            --bg-input: #161b22;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --border-color: #30363d;
+            --accent-green: #238636;
+            --accent-blue: #58a6ff;
+            --accent-trx: #ef2f2f;
+            --accent-sol: #9945FF;
+            --danger: #F6465D;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-y: auto;
+        }
+
+        /* --- CONTAINER --- */
+        .checkout-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 460px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            position: relative;
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            margin: auto;
+            overflow: visible;
+        }
+
+        /* --- HEADER --- */
+        .header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(22, 27, 34, 0.95);
+            border-radius: 24px 24px 0 0;
+            z-index: 10;
+        }
+        .header-title { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .secure-badge { 
+            font-size: 0.7rem; 
+            background: rgba(35, 134, 54, 0.1); 
+            color: var(--accent-green); 
+            padding: 5px 10px; 
+            border-radius: 20px; 
+            font-weight: 600; 
+            display: flex; 
+            align-items: center; 
+            gap: 5px; 
+            border: 1px solid rgba(35, 134, 54, 0.2);
+        }
+
+        /* --- BODY --- */
+        .content { padding: 25px; flex: 1; display: flex; flex-direction: column; }
+
+        /* Asset Toggle */
+        .asset-toggle {
+            display: flex;
+            background: var(--bg-input);
+            padding: 4px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border: 1px solid var(--border-color);
+        }
+        .toggle-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+        .toggle-btn.active { background: #21262d; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+        .toggle-btn.active.trx { border-bottom: 2px solid var(--accent-trx); }
+        .toggle-btn.active.sol { border-bottom: 2px solid var(--accent-sol); }
+
+        /* Inputs */
+        .input-group { margin-bottom: 20px; position: relative; }
+        .input-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; font-weight: 500; }
+        .rate-info { font-size: 0.75rem; color: var(--accent-blue); }
+        
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 14px 18px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-wrapper:focus-within { border-color: var(--text-muted); box-shadow: 0 0 0 3px rgba(255,255,255,0.05); }
+        
+        .amount-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 1.4rem;
+            font-weight: 700;
+            width: 100%;
+        }
+        .amount-input::placeholder { color: rgba(255,255,255,0.1); }
+
+        .currency-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            color: var(--text-main);
+            padding-left: 15px;
+            border-left: 1px solid var(--border-color);
+        }
+        .currency-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .icon-usd { background: var(--accent-green); }
+        .icon-trx { background: var(--accent-trx); }
+        .icon-sol { background: var(--accent-sol); }
+
+        /* Payment Methods */
+        .payment-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        
+        .pm-card {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 15px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .pm-header { display: flex; align-items: center; justify-content: space-between; }
+        .pm-icon { font-size: 1.2rem; color: var(--text-muted); }
+        .pm-check { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-color); transition: all 0.2s; }
+        
+        .pm-name { font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
+        .pm-sub { font-size: 0.7rem; color: var(--text-muted); }
+
+        .pm-card.selected { border-color: var(--accent-blue); background: rgba(88, 166, 255, 0.05); }
+        .pm-card.selected .pm-check { background: var(--accent-blue); border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(88,166,255,0.3); }
+        .pm-card.selected .pm-icon { color: var(--accent-blue); }
+
+        .pm-card.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); background: rgba(0,0,0,0.2); }
+        .min-badge {
+            position: absolute;
+            top: -8px;
+            right: 10px;
+            background: var(--danger);
+            color: white;
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            display: none; 
+        }
+        .pm-card.disabled .min-badge { display: block; }
+
+        /* Branding */
+        .branding { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 25px; opacity: 0.6; }
+        .branding svg { fill: var(--text-main); width: 20px; height: 20px; }
+        .branding span { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+
+        /* Summary */
+        .summary-card {
+            background: rgba(255,255,255,0.02);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .summary-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 12px; color: var(--text-muted); }
+        .summary-row.total { border-top: 1px solid var(--border-color); padding-top: 15px; margin-bottom: 0; color: #fff; font-weight: 700; font-size: 1.1rem; }
+
+        /* Pay Button */
+        .btn-pay {
+            width: 100%;
+            background: var(--accent-green);
+            color: #fff;
+            border: none;
+            padding: 18px;
+            border-radius: 14px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(35, 134, 54, 0.3);
+            margin-top: 30px;
+            margin-bottom: 10px;
+        }
+        .btn-pay:active { transform: scale(0.98); }
+        .btn-pay:hover { background: #2ea043; }
+        
+        /* Error Animation Class */
+        .btn-error {
+            background: var(--danger) !important;
+            animation: shake 0.3s;
+        }
+
+        /* --- VIEW MANAGEMENT --- */
+        .view-section { animation: fadeIn 0.3s ease-out; }
+        .hidden { display: none !important; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- INJECTED FORM STYLES --- */
+        .checkout { width: 100%; padding: 0; background: transparent; box-shadow: none; }
+        .header-injected h2 { margin:0; font-size:1.4rem; color:#fff; }
+        .header-injected p { margin:6px 0 25px; font-size:14px; color:var(--text-muted); }
+
+        .field { margin-bottom: 20px; }
+        .field label { display:block; font-size:0.85rem; margin-bottom:8px; color:var(--text-muted); font-weight: 500; }
+        
+        .field input, .field select {
+            width:100%; padding: 14px; font-size:1rem; border-radius: 12px;
+            background: var(--bg-input); border: 1px solid var(--border-color);
+            color: #fff; outline:none; transition: all 0.2s;
+            appearance: none;
+        }
+        .field input:focus, .field select:focus { border-color: var(--accent-blue); box-shadow:0 0 0 3px rgba(88,166,255,.15); }
+        
+        /* ERROR STATE - FLASH RED */
+        .field input.input-error, .field select.input-error {
+            border-color: var(--danger);
+            box-shadow: 0 0 0 2px rgba(246, 70, 93, 0.4);
+            animation: shake 0.3s;
+        }
+        
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+
+        option:disabled { color: #555; font-style: italic; }
+
+        .card-input { position:relative; }
+        .card-icons { position:absolute; right:14px; top:40px; display:flex; gap:8px; pointer-events:none; }
+        .card-icons img { height:20px; filter: brightness(0.9); }
+        
+        .row { display:flex; gap:15px; }
+        
+        .status { margin-top:15px; text-align:center; font-size:13px; min-height: 20px; }
+        
+        /* Billing Section Title */
+        .section-title {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 15px;
+            margin-top: 10px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+        
+        .github-brand {
+            margin-top:25px; padding-top:15px; border-top:1px solid var(--border-color);
+            display:flex; align-items:center; justify-content:center; gap:8px;
+            font-size:13px; color:var(--text-muted);
+            padding-bottom: 20px; /* Bottom spacing */
+        }
+        .github-brand img { width:18px; height:18px; filter: invert(1); opacity: 0.6; }
+
+        .btn-back {
+            background: transparent; border: 1px solid var(--border-color); color: var(--text-muted);
+            padding: 8px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 20px;
+            display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem;
+        }
+        .btn-back:hover { color: #fff; border-color: var(--text-main); }
+
+        /* --- MODALS --- */
+        .modal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(1, 4, 9, 0.95);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 30px;
+            backdrop-filter: blur(5px);
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid var(--border-color);
+            border-top: 5px solid var(--accent-green); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .success-icon { width: 70px; height: 70px; background: var(--accent-green); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin-bottom: 20px; box-shadow: 0 0 30px rgba(35, 134, 54, 0.4); animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .error-icon { width: 70px; height: 70px; background: var(--danger); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin-bottom: 20px; box-shadow: 0 0 30px rgba(246, 70, 93, 0.4); animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+
+    </style>
+</head>
+<body>
+
+    <div class="checkout-container">
+        
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+                Secure Checkout
+            </div>
+            <div class="secure-badge">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                256-bit SSL
+            </div>
+        </div>
+
+        <!-- VIEW 1: CALCULATOR -->
+        <div id="view-calculator" class="content view-section">
+            <!-- Asset Switcher -->
+            <div class="asset-toggle">
+                <button class="toggle-btn active trx" onclick="switchAsset('TRX')">
+                    <span style="color:var(--accent-trx);">●</span> TRX
+                </button>
+                <button class="toggle-btn sol" onclick="switchAsset('SOL')">
+                    <span style="color:var(--accent-sol);">●</span> SOL
+                </button>
+            </div>
+
+            <!-- Input: Crypto (You Buy) -->
+            <div class="input-group">
+                <label class="input-label">
+                    <span>You Buy</span>
+                    <span class="rate-info" id="rate-display">1 TRX ≈ $0.29</span>
+                </label>
+                <div class="input-wrapper">
+                    <input type="number" id="input-crypto" class="amount-input" value="1" placeholder="0.00" oninput="calculateUSD()">
+                    <div class="currency-badge">
+                        <div id="crypto-icon" class="currency-icon icon-trx">T</div>
+                        <span id="crypto-label">TRX</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input: USD (You Pay) -->
+            <div class="input-group">
+                <label class="input-label">
+                    <span>You Pay</span>
+                </label>
+                <div class="input-wrapper">
+                    <input type="number" id="input-usd" class="amount-input" value="0.29" placeholder="0.00" oninput="calculateCrypto()">
+                    <div class="currency-badge">
+                        <div class="currency-icon icon-usd">$</div>
+                        <span>USD</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Methods -->
+            <label class="input-label">Select Payment Method</label>
+            <div class="payment-methods">
+                <div class="pm-card selected" id="pm-card" onclick="selectMethod('card')">
+                    <div class="pm-header">
+                        <div class="pm-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                        </div>
+                        <div class="pm-check"></div>
+                    </div>
+                    <div class="pm-name">Credit/Debit Card</div>
+                    <div class="pm-sub">Instant • No Fee</div>
+                </div>
+
+                <div class="pm-card disabled" id="pm-bank" onclick="selectMethod('bank')">
+                    <div class="min-badge">Min $10</div>
+                    <div class="pm-header">
+                        <div class="pm-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                        </div>
+                        <div class="pm-check"></div>
+                    </div>
+                    <div class="pm-name">Bank Transfer</div>
+                    <div class="pm-sub">2-4 Hours • 2% Fee</div>
+                </div>
+            </div>
+
+            <!-- Branding -->
+            <div class="branding">
+                <svg viewBox="0 0 16 16" version="1.1"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                <span>Powered by GitHub</span>
+            </div>
+
+            <!-- Summary -->
+            <div class="summary-card">
+                <div class="summary-row">
+                    <span>Purchase Amount</span>
+                    <span id="summary-amount">$0.29</span>
+                </div>
+                <div class="summary-row">
+                    <span>Transaction Fee</span>
+                    <span id="summary-fee">$0.00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total Pay</span>
+                    <span id="total-pay">$0.29</span>
+                </div>
+            </div>
+
+            <!-- Pay Button -->
+            <button class="btn-pay" onclick="processPayme
